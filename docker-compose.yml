@@ -1,7 +1,7 @@
 services:
   scanmap:
     build: .
-    image: ghcr.io/BANAANGA/scanmap:latest
+    image: ghcr.io/banaanga/scanmap:latest
     container_name: scanmap
     restart: unless-stopped
     ports:
