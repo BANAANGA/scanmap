@@ -217,6 +217,11 @@ class ScanMapHandler(BaseHTTPRequestHandler):
                 self._security_headers()
                 self.end_headers()
                 return
+            # For API requests, return 401
+            if path.startswith("/api/"):
+                self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
+                return
+            self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
             return
         else:
             pass
@@ -284,6 +289,10 @@ class ScanMapHandler(BaseHTTPRequestHandler):
             self._do_logout()
             return
         if not self._authorized():
+            if path.startswith("/api/"):
+                self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
+                return
+            self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
             return
 
         if path == "/api/jobs":
