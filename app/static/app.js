@@ -12,6 +12,7 @@ const state = {
   lines: [],
   hosts: new Set(),
   resultFields: null,
+  resultRows: [],
   copyStatusTimer: null,
   busy: false,
 };
@@ -258,12 +259,15 @@ function selectJob(jobId) {
   state.lines = [];
   state.hosts = new Set();
   state.resultFields = null;
+  state.resultRows = [];
   state.job = null;
   $("#console").textContent = "";
   $("#results-wrap").classList.add("hidden");
   $("#results-table thead").textContent = "";
   $("#results-table tbody").textContent = "";
   $("#copy-status").textContent = "";
+  $("#copy-all-results").disabled = true;
+  $("#save-results-csv").disabled = true;
   $("#job-ref").textContent = jobId;
   $("#cancel-job").disabled = false;
   $("#clear-job").disabled = false;
@@ -396,6 +400,9 @@ function appendZmapResult(line) {
     row.append(cell);
   });
   $("#results-table tbody").append(row);
+  state.resultRows.push(values);
+  $("#copy-all-results").disabled = false;
+  $("#save-results-csv").disabled = false;
 
   if (addressIndex >= 0) state.hosts.add(values[addressIndex]);
   $("#host-counter").textContent = state.hosts.size ? `${state.hosts.size} hosts` : "";
@@ -416,18 +423,25 @@ function renderResultHeaders(fields) {
 }
 
 async function copyResultValue(value) {
-  const status = $("#copy-status");
-  let copied = false;
+  const copied = await copyText(value);
+  showCopyStatus(copied ? `Copied “${value}”` : "Could not copy value");
+}
+
+async function copyText(value) {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(value);
-      copied = true;
+      return true;
     }
   } catch {
-    copied = false;
+    // Try the selection-based fallback for browsers without clipboard permission.
   }
-  if (!copied) copied = copyWithSelection(value);
-  status.textContent = copied ? `Copied “${value}”` : "Could not copy value";
+  return copyWithSelection(value);
+}
+
+function showCopyStatus(message) {
+  const status = $("#copy-status");
+  status.textContent = message;
   clearTimeout(state.copyStatusTimer);
   state.copyStatusTimer = setTimeout(() => {
     status.textContent = "";
@@ -447,6 +461,35 @@ function copyWithSelection(value) {
   return copied;
 }
 
+$("#copy-all-results").addEventListener("click", async () => {
+  if (!state.resultFields || !state.resultRows.length) return;
+  const values = [state.resultFields, ...state.resultRows]
+    .map((row) => row.join("\t"))
+    .join("\n");
+  const copied = await copyText(values);
+  showCopyStatus(copied ? `Copied ${state.resultRows.length} results` : "Could not copy results");
+});
+
+function csvValue(value) {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+$("#save-results-csv").addEventListener("click", () => {
+  if (!state.resultFields || !state.resultRows.length) return;
+  const rows = [state.resultFields, ...state.resultRows];
+  const csv = rows.map((row) => row.map(csvValue).join(",")).join("\r\n") + "\r\n";
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `scanmap-zmap-${state.jobId}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showCopyStatus("CSV saved");
+});
+
 $("#cancel-job").addEventListener("click", async () => {
   if (!state.jobId) return;
   try {
@@ -459,11 +502,14 @@ $("#cancel-job").addEventListener("click", async () => {
 $("#clear-job").addEventListener("click", () => {
   state.lines = [];
   state.hosts = new Set();
+  state.resultRows = [];
   state.offset = state.job ? state.job.next : state.offset;
   $("#console").textContent = "";
   $("#results-wrap").classList.add("hidden");
   $("#results-table thead").textContent = "";
   $("#results-table tbody").textContent = "";
+  $("#copy-all-results").disabled = true;
+  $("#save-results-csv").disabled = true;
   $("#host-counter").textContent = "";
 });
 
