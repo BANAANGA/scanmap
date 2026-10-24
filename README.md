@@ -53,7 +53,7 @@ mkdir -p data
 docker compose up -d
 ```
 
-Then open <http://localhost:8080>.
+Then open <http://localhost:8420>.
 
 On first run, if no users exist, you'll be redirected to `/setup` to create the admin account.
 
@@ -61,7 +61,7 @@ Without compose:
 
 ```bash
 docker pull ghcr.io/banaanga/scanmap:latest
-docker run --rm -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
+docker run --rm -p 8420:8420 --cap-add NET_RAW --cap-add NET_ADMIN \
   -v "$PWD/data:/data" \
   ghcr.io/banaanga/scanmap:latest
 ```
@@ -69,7 +69,7 @@ docker run --rm -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
 Using environment variables:
 
 ```bash
-docker run --rm -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
+docker run --rm -p 8420:8420 --cap-add NET_RAW --cap-add NET_ADMIN \
   -e SCANMAP_USER=admin -e SCANMAP_PASSWORD=change-me \
   -v "$PWD/data:/data" \
   ghcr.io/banaanga/scanmap:latest
@@ -106,7 +106,7 @@ All configuration is via environment variables:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SCANMAP_HOST` | `0.0.0.0` | Bind address. |
-| `SCANMAP_PORT` | `8080` | HTTP port. |
+| `SCANMAP_PORT` | `8420` | HTTP port. |
 | `SCANMAP_DATA_DIR` | `/data` | Working directory; also the only place input files may come from. |
 | `SCANMAP_MAX_PARALLEL` | `2` | How many scans may run at once. |
 | `SCANMAP_MAX_JOBS` | `100` | Number of jobs kept in memory (oldest finished jobs are evicted). |
@@ -172,7 +172,7 @@ Or with plain docker:
 ```bash
 docker pull ghcr.io/banaanga/scanmap:latest
 docker stop scanmap 2>/dev/null; docker rm scanmap 2>/dev/null
-docker run --rm -d --name scanmap -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
+docker run --rm -d --name scanmap -p 8420:8420 --cap-add NET_RAW --cap-add NET_ADMIN \
   -v "$PWD/data:/data" \
   ghcr.io/banaanga/scanmap:latest
 ```

@@ -50,7 +50,7 @@ def env_int(name: str, default: int) -> int:
 class Config:
     def __init__(self) -> None:
         self.host = os.environ.get("SCANMAP_HOST", "0.0.0.0")
-        self.port = env_int("SCANMAP_PORT", 8080)
+        self.port = env_int("SCANMAP_PORT", 8420)
         self.data_dir = os.environ.get("SCANMAP_DATA_DIR", "/data")
         self.max_parallel = env_int("SCANMAP_MAX_PARALLEL", 2)
         self.max_jobs = env_int("SCANMAP_MAX_JOBS", 100)
