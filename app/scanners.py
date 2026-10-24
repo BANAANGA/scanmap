@@ -284,9 +284,7 @@ def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     # NOTE: -v is --verbosity and takes a level (0-5); passing it bare makes
     # zmap eat the next flag ("invalid numeric value: -p"). Level 4 logs what
     # zmap is doing (interface, gateway MAC, blocklist, output module).
-    # Docker bridge networks may not resolve the gateway MAC in zmap's
-    # Ethernet mode. Let the kernel route IP packets and resolve neighbors.
-    argv: list[str] = ["zmap", "-v", "4", "-X"]
+    argv: list[str] = ["zmap", "-v", "4"]
 
     port = _int(params, "port", "port", default=443)
     argv += ["-p", str(port)]

@@ -90,7 +90,6 @@ class ZmapTest(unittest.TestCase):
     def test_defaults(self):
         argv = build_zmap({"target": "192.168.1.0/24"})
         self.assertEqual(argv[0], "zmap")
-        self.assertIn("-X", argv)
         self.assertEqual(argv[argv.index("-p") + 1], "443")
         self.assertEqual(argv[argv.index("-B") + 1], "1M")
         self.assertEqual(argv[argv.index("-M") + 1], "tcp_synscan")

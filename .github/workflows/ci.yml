@@ -54,8 +54,10 @@ jobs:
       - name: zmap finds an open port (direct)
         run: |
           TARGET_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' scanmap-target)
+          GATEWAY_MAC=$(docker exec scanmap-ci python3 -c 'from app.jobs import _resolve_zmap_gateway_mac; result = _resolve_zmap_gateway_mac(); print(result[1] if result else "")')
+          test -n "$GATEWAY_MAC"
           echo "target is $TARGET_IP"
-          docker exec scanmap-ci zmap -v 4 -X -p 80 -B 1M -M tcp_synscan \
+          docker exec scanmap-ci zmap -v 4 -G "$GATEWAY_MAC" -p 80 -B 1M -M tcp_synscan \
             -f saddr,dport -o - -b /dev/null -c 2 "$TARGET_IP/32" | tee /tmp/zmap.out
           grep -q "$TARGET_IP" /tmp/zmap.out
       - name: zmap finds an open port (through the API)
