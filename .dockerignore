@@ -1,0 +1,12 @@
+.git
+.github
+tests
+data
+*.log
+__pycache__
+**/__pycache__
+.venv
+venv
+README.md
+LICENSE
+.gitignore

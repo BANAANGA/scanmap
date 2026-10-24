@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>scanmap — nmap + zmap</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%2337d6a8' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%2337d6a8'/%3E%3Ccircle cx='32' cy='32' r='27' fill='none' stroke='%2337d6a8' stroke-width='2' stroke-dasharray='4 8'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="18" fill="none" stroke="currentColor" stroke-width="4" />
+          <circle cx="32" cy="32" r="7" fill="currentColor" />
+          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 8" />
+        </svg>
+        <div>
+          <h1>scanmap</h1>
+          <p>web interface for nmap &amp; zmap</p>
+        </div>
+      </div>
+      <div class="tools" id="tools" aria-live="polite"></div>
+    </header>
+
+    <main>
+      <section class="panel form-panel">
+        <div class="tabs" role="tablist" aria-label="Scanner">
+          <button class="tab is-active" data-scanner="nmap" role="tab" aria-selected="true">nmap</button>
+          <button class="tab" data-scanner="zmap" role="tab" aria-selected="false">zmap</button>
+          <span class="tab-hint" id="tab-hint"></span>
+        </div>
+
+        <form id="nmap-form" data-scanner="nmap" autocomplete="off">
+          <label class="field full">
+            <span>Target</span>
+            <input name="target" placeholder="192.168.1.0/24 or scanme.nmap.org" required />
+            <small>Host, hostname, CIDR, range or comma separated list.</small>
+          </label>
+
+          <label class="field">
+            <span>Scan type</span>
+            <select name="scan">
+              <option value="connect">TCP connect (-sT)</option>
+              <option value="syn">TCP SYN (-sS, needs NET_RAW)</option>
+              <option value="udp">UDP (-sU)</option>
+              <option value="ping">Ping sweep (-sn)</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Ports</span>
+            <input name="ports" value="1-1000" placeholder="22,80,443 or 1-1000" />
+          </label>
+
+          <label class="field">
+            <span>Timing</span>
+            <select name="timing">
+              <option>T0</option>
+              <option>T1</option>
+              <option>T2</option>
+              <option selected>T3</option>
+              <option>T4</option>
+              <option>T5</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Scripts</span>
+            <input name="scripts" placeholder="vulners, http-title" />
+            <small>Optional comma separated NSE script names.</small>
+          </label>
+
+          <fieldset class="field full">
+            <legend>Options</legend>
+            <div class="checks">
+              <label><input type="checkbox" name="service_detection" /> Service/version (-sV)</label>
+              <label><input type="checkbox" name="default_scripts" /> Default scripts (-sC)</label>
+              <label><input type="checkbox" name="os_detection" /> OS detection (-O)</label>
+              <label><input type="checkbox" name="no_ping" /> Skip host discovery (-Pn)</label>
+              <label><input type="checkbox" name="no_dns" checked /> No DNS resolution (-n)</label>
+              <label><input type="checkbox" name="open_only" /> Only open ports (--open)</label>
+            </div>
+          </fieldset>
+
+          <div class="actions full">
+            <button type="submit" class="primary">Start scan</button>
+            <code class="preview" id="nmap-preview"></code>
+          </div>
+        </form>
+
+        <form id="zmap-form" data-scanner="zmap" class="hidden" autocomplete="off">
+          <label class="field full">
+            <span>Target</span>
+            <input name="target" placeholder="192.168.1.0/24" required />
+            <small>Exactly one IP address or CIDR block.</small>
+          </label>
+
+          <label class="field">
+            <span>Port</span>
+            <input name="port" type="number" min="1" max="65535" value="443" />
+          </label>
+
+          <label class="field">
+            <span>Bandwidth</span>
+            <input name="bandwidth" value="1M" placeholder="1M" />
+            <small>e.g. 500K, 10M, 1G.</small>
+          </label>
+
+          <label class="field">
+            <span>Packet rate</span>
+            <input name="rate" type="number" min="1" placeholder="optional" />
+            <small>Packets per second; overrides bandwidth.</small>
+          </label>
+
+          <label class="field">
+            <span>Probe module</span>
+            <select name="probe_module">
+              <option value="tcp_synscan">tcp_synscan</option>
+              <option value="tcp_ackscan">tcp_ackscan</option>
+              <option value="icmp_echoscan">icmp_echoscan</option>
+              <option value="icmp_echo_time">icmp_echo_time</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Interface</span>
+            <input name="interface" placeholder="eth0 (optional)" />
+          </label>
+
+          <label class="field">
+            <span>Source port</span>
+            <input name="source_port" type="number" min="1" max="65535" placeholder="optional" />
+          </label>
+
+          <label class="field">
+            <span>Max targets</span>
+            <input name="max_targets" type="number" min="1" placeholder="optional" />
+          </label>
+
+          <label class="field">
+            <span>Output fields</span>
+            <input name="output_fields" value="saddr,dport" />
+          </label>
+
+          <label class="field">
+            <span>Blocklist file</span>
+            <input name="blocklist" placeholder="blocklist.txt (inside /data)" />
+          </label>
+
+          <fieldset class="field full">
+            <legend>Options</legend>
+            <div class="checks">
+              <label><input type="checkbox" name="cooldown" /> Cooldown mode (-c)</label>
+              <label><input type="checkbox" name="dry_run" /> Dry run (-d)</label>
+            </div>
+          </fieldset>
+
+          <div class="actions full">
+            <button type="submit" class="primary">Start scan</button>
+            <code class="preview" id="zmap-preview"></code>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel jobs-panel">
+        <div class="panel-head">
+          <h2>Jobs</h2>
+          <button type="button" class="ghost" id="refresh-jobs">refresh</button>
+        </div>
+        <ul class="job-list" id="job-list">
+          <li class="empty">No scans yet.</li>
+        </ul>
+      </section>
+
+      <section class="panel console-panel">
+        <div class="panel-head">
+          <h2>Output <span class="job-ref" id="job-ref"></span></h2>
+          <div class="console-actions">
+            <span class="counter" id="host-counter"></span>
+            <button type="button" class="ghost" id="cancel-job" disabled>stop</button>
+            <button type="button" class="ghost" id="clear-job" disabled>clear</button>
+            <button type="button" class="ghost" id="download-log" disabled>download</button>
+          </div>
+        </div>
+        <pre class="console" id="console" aria-live="polite">Select a job or start a scan to see live output.</pre>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

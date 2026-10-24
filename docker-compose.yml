@@ -1,0 +1,33 @@
+services:
+  scanmap:
+    build: .
+    image: ghcr.io/OWNER/scanmap:latest
+    container_name: scanmap
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    # SYN scans and zmap send raw packets; the container needs these
+    # capabilities instead of full root.
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    environment:
+      SCANMAP_PORT: "8080"
+      SCANMAP_MAX_PARALLEL: "2"
+      # Set both to require HTTP basic auth (put a TLS proxy in front!).
+      SCANMAP_USER: ""
+      SCANMAP_PASSWORD: ""
+    volumes:
+      # Blocklists and other input files live here and are mounted read-only
+      # into the app.
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
