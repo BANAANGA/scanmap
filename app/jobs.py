@@ -174,14 +174,22 @@ class JobManager:
                 job.started = time.time()
 
             try:
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+                # zmap buffers heavily without a tty; force line-buffering
+                env["ZMAP_STDOUT_FLUSH"] = "1"
+                argv = job.argv
+                if argv and argv[0] == "zmap":
+                    argv = ["stdbuf", "-oL", "-eL"] + argv
                 proc = subprocess.Popen(
-                    job.argv,
+                    argv,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
                     bufsize=1,
                     start_new_session=True,
                     cwd=self.data_dir if os.path.isdir(self.data_dir) else None,
+                    env=env,
                 )
             except FileNotFoundError:
                 job.status = "failed"
