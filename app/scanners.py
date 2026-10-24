@@ -286,7 +286,7 @@ def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     # zmap is doing (interface, gateway MAC, blocklist, output module).
     # Docker bridge networks may not resolve the gateway MAC in zmap's
     # Ethernet mode. Let the kernel route IP packets and resolve neighbors.
-    argv: list[str] = ["zmap", "-v", "4", "--iplayer"]
+    argv: list[str] = ["zmap", "-v", "4", "-X"]
 
     port = _int(params, "port", "port", default=443)
     argv += ["-p", str(port)]

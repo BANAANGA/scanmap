@@ -55,7 +55,7 @@ jobs:
         run: |
           TARGET_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' scanmap-target)
           echo "target is $TARGET_IP"
-          docker exec scanmap-ci zmap -v 4 --iplayer -p 80 -B 1M -M tcp_synscan \
+          docker exec scanmap-ci zmap -v 4 -X -p 80 -B 1M -M tcp_synscan \
             -f saddr,dport -o - -b /dev/null -c 2 "$TARGET_IP/32" | tee /tmp/zmap.out
           grep -q "$TARGET_IP" /tmp/zmap.out
       - name: zmap finds an open port (through the API)
