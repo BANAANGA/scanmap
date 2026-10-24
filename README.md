@@ -38,7 +38,7 @@ space quickly.
 ## Quick start
 
 ```bash
-git clone https://github.com/OWNER/scanmap.git
+git clone https://github.com/BANAANGA/scanmap.git
 cd scanmap
 docker compose up --build
 ```
@@ -140,7 +140,7 @@ Only Python ≥ 3.9 and the scanners themselves are required:
 
 ```bash
 sudo apt install nmap zmap python3
-git clone https://github.com/OWNER/scanmap.git
+git clone https://github.com/BANAANGA/scanmap.git
 cd scanmap
 mkdir -p data
 SCANMAP_DATA_DIR=$PWD/data python3 -m app.main

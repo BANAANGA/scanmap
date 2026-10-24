@@ -8,7 +8,7 @@ FROM debian:bookworm-slim
 
 LABEL org.opencontainers.image.title="scanmap" \
       org.opencontainers.image.description="Web interface for nmap and zmap" \
-      org.opencontainers.image.source="https://github.com/OWNER/scanmap" \
+      org.opencontainers.image.source="https://github.com/BANAANGA/scanmap" \
       org.opencontainers.image.licenses="MIT"
 
 RUN apt-get update \
