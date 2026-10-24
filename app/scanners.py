@@ -285,7 +285,12 @@ def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     if blocklist:
         argv += ["-b", _resolve_data_file(blocklist, data_dir, "blocklist file")]
     elif _flag(params, "disable_default_blacklist") or _flag(params, "no_blacklist") or _flag(params, "ignore_blacklist"):
-        argv += ["-b", "/dev/null"]
+        # Create empty blocklist file
+        import tempfile
+        empty_blocklist = os.path.join(data_dir, ".empty_blocklist")
+        if not os.path.exists(empty_blocklist):
+            open(empty_blocklist, 'w').close()
+        argv += ["-b", empty_blocklist]
 
 
     if _flag(params, "dry_run"):
