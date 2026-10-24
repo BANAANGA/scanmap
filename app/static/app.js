@@ -11,6 +11,8 @@ const state = {
   job: null,
   lines: [],
   hosts: new Set(),
+  resultFields: null,
+  copyStatusTimer: null,
   busy: false,
 };
 
@@ -255,8 +257,13 @@ function selectJob(jobId) {
   state.offset = 0;
   state.lines = [];
   state.hosts = new Set();
+  state.resultFields = null;
   state.job = null;
   $("#console").textContent = "";
+  $("#results-wrap").classList.add("hidden");
+  $("#results-table thead").textContent = "";
+  $("#results-table tbody").textContent = "";
+  $("#copy-status").textContent = "";
   $("#job-ref").textContent = jobId;
   $("#cancel-job").disabled = false;
   $("#clear-job").disabled = false;
@@ -273,6 +280,12 @@ async function poll() {
   try {
     const job = await api(`/api/jobs/${state.jobId}?since=${state.offset}`);
     state.job = job;
+    if (job.scanner === "zmap" && !state.resultFields) {
+      const fieldsIndex = job.argv.indexOf("-f");
+      if (fieldsIndex >= 0 && job.argv[fieldsIndex + 1]) {
+        state.resultFields = job.argv[fieldsIndex + 1].split(",");
+      }
+    }
     if (job.output && job.output.length) {
       job.output.forEach((line) => appendConsole(line));
       state.offset = job.next;
@@ -309,8 +322,11 @@ function appendConsole(line, isError = false) {
   const consoleEl = $("#console");
   const atBottom = consoleEl.scrollHeight - consoleEl.scrollTop - consoleEl.clientHeight < 40;
   state.lines.push(line);
-  if (state.job && state.job.scanner === "zmap" && /^[0-9a-fA-F:.]+(?:[,:]|$)/.test(line)) {
-    state.hosts.add(line.split(/[,:]/)[0]);
+  if (!isError && state.job?.scanner === "zmap" && appendZmapResult(line)) {
+    if (state.lines.length === 1 && consoleEl.textContent.startsWith("Select a job")) {
+      consoleEl.textContent = "";
+    }
+    return;
   }
   if (state.lines.length === 1 && consoleEl.textContent.startsWith("Select a job")) {
     consoleEl.textContent = "";
@@ -320,6 +336,115 @@ function appendConsole(line, isError = false) {
   node.textContent = `${line}\n`;
   consoleEl.append(node);
   if (atBottom) consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"' && quoted && line[index + 1] === '"') {
+      value += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      values.push(value);
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+  if (quoted) return null;
+  values.push(value);
+  return values;
+}
+
+function appendZmapResult(line) {
+  const values = parseCsvLine(line);
+  const fields = state.resultFields;
+  if (!values || !fields || values.length !== fields.length) return false;
+
+  const normalized = values.map((value) => value.trim().toLowerCase());
+  if (normalized.every((value, index) => value === fields[index].toLowerCase())) {
+    renderResultHeaders(fields);
+    return true;
+  }
+
+  const addressIndex = fields.findIndex((field) => field === "saddr" || field === "saddr-raw");
+  if (addressIndex >= 0) {
+    const addressPattern = fields[addressIndex] === "saddr-raw"
+      ? /^(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9a-fA-F:]+|[0-9]+)$/
+      : /^(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9a-fA-F:]+)$/;
+    if (!addressPattern.test(values[addressIndex])) return false;
+  }
+  if (values.some((value) => !value.trim())) return false;
+
+  renderResultHeaders(fields);
+  const row = document.createElement("tr");
+  values.forEach((value) => {
+    const cell = document.createElement("td");
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "copy-value";
+    copyButton.textContent = value;
+    copyButton.title = "Click to copy";
+    copyButton.setAttribute("aria-label", `Copy ${value}`);
+    copyButton.addEventListener("click", () => copyResultValue(value));
+    cell.append(copyButton);
+    row.append(cell);
+  });
+  $("#results-table tbody").append(row);
+
+  if (addressIndex >= 0) state.hosts.add(values[addressIndex]);
+  $("#host-counter").textContent = state.hosts.size ? `${state.hosts.size} hosts` : "";
+  return true;
+}
+
+function renderResultHeaders(fields) {
+  const table = $("#results-table");
+  if (table.tHead.rows.length) return;
+  const row = table.tHead.insertRow();
+  fields.forEach((field) => {
+    const header = document.createElement("th");
+    header.scope = "col";
+    header.textContent = field;
+    row.append(header);
+  });
+  $("#results-wrap").classList.remove("hidden");
+}
+
+async function copyResultValue(value) {
+  const status = $("#copy-status");
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      copied = true;
+    }
+  } catch {
+    copied = false;
+  }
+  if (!copied) copied = copyWithSelection(value);
+  status.textContent = copied ? `Copied “${value}”` : "Could not copy value";
+  clearTimeout(state.copyStatusTimer);
+  state.copyStatusTimer = setTimeout(() => {
+    status.textContent = "";
+  }, 1800);
+}
+
+function copyWithSelection(value) {
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.append(input);
+  input.select();
+  const copied = document.execCommand("copy");
+  input.remove();
+  return copied;
 }
 
 $("#cancel-job").addEventListener("click", async () => {
@@ -336,6 +461,9 @@ $("#clear-job").addEventListener("click", () => {
   state.hosts = new Set();
   state.offset = state.job ? state.job.next : state.offset;
   $("#console").textContent = "";
+  $("#results-wrap").classList.add("hidden");
+  $("#results-table thead").textContent = "";
+  $("#results-table tbody").textContent = "";
   $("#host-counter").textContent = "";
 });
 

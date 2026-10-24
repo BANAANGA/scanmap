@@ -23,6 +23,8 @@ space quickly.
 
 - **Two scanners behind one UI** — nmap and zmap, each with their own form.
 - **Live output** — job output is streamed into the browser while a scan runs.
+- **Copyable results** — zmap CSV responses are shown in a table; click a cell
+  to copy its value.
 - **Job list** — start several scans, watch status, cancel a running one,
   download the log.
 - **Allow-listed arguments** — the UI never exposes a free-form "extra flags"
