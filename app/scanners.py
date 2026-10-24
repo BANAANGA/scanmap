@@ -9,6 +9,7 @@ service.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import shutil
@@ -41,22 +42,47 @@ ZMAP_MODULES: dict[str, str] = {
     "icmp_echo_time": "ICMP timestamp scan",
 }
 
-ZMAP_OUTPUT_FIELDS = {
+# Field names come straight from zmap's fielddef tables. They differ per probe
+# module, and passing a field the module does not implement makes zmap abort.
+ZMAP_COMMON_FIELDS = {
     "saddr",
+    "saddr-raw",
     "daddr",
-    "sport",
-    "dport",
-    "seqno",
-    "ackno",
-    "window",
-    "classification",
-    "success",
-    "cooldown",
+    "daddr-raw",
+    "ipid",
     "ttl",
+    "repeat",
+    "cooldown",
     "timestamp-str",
     "timestamp-ts",
     "timestamp-us",
 }
+
+ZMAP_TCP_FIELDS = {
+    "sport",
+    "dport",
+    "seqnum",
+    "acknum",
+    "window",
+    "classification",
+    "success",
+}
+
+ZMAP_ICMP_FIELDS = {
+    "type",
+    "code",
+    "icmp-id",
+    "seq",
+    "classification",
+    "success",
+}
+
+ZMAP_OUTPUT_FIELDS = ZMAP_COMMON_FIELDS | ZMAP_TCP_FIELDS | ZMAP_ICMP_FIELDS
+
+# zmap ships a blocklist of bogon/private ranges and refuses to scan them by
+# default. That is the right call on the public Internet, but for a self-hosted
+# LAN tool it just looks like "zmap returns nothing".
+ZMAP_EMPTY_BLOCKLIST = "/dev/null"
 
 
 class ValidationError(ValueError):
@@ -236,10 +262,29 @@ def build_nmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
 # --------------------------------------------------------------------------- #
 
 
+def _target_is_local(target: str) -> bool:
+    """True when the target is a private/loopback/link-local address."""
+    host = target.split("/", 1)[0]
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_unspecified
+    )
+
+
 def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     target = validate_zmap_target(_text(params, "target", "target"))
-    # zmap 3.x doesn't use -v the same way; some builds choke on it
-    argv: list[str] = ["zmap"]
+
+    # NOTE: -v is --verbosity and takes a level (0-5); passing it bare makes
+    # zmap eat the next flag ("invalid numeric value: -p"). Level 4 logs what
+    # zmap is doing (interface, gateway MAC, blocklist, output module).
+    argv: list[str] = ["zmap", "-v", "4"]
 
     port = _int(params, "port", "port", default=443)
     argv += ["-p", str(port)]
@@ -261,7 +306,8 @@ def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
 
     source_port = _int(params, "source_port", "source port", default=None)
     if source_port is not None:
-        argv += ["-S", str(source_port)]
+        # -s is --source-port; -S is --source-ip in zmap 2.x and 3.x.
+        argv += ["-s", str(source_port)]
 
     module = _choice(params, "probe_module", "probe module", ZMAP_MODULES, "tcp_synscan")
     argv += ["-M", module]
@@ -273,7 +319,16 @@ def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     unknown = [f for f in fields if f not in ZMAP_OUTPUT_FIELDS]
     if unknown:
         raise ValidationError(f"unknown output field(s): {', '.join(unknown)}")
-    argv += ["-f", ",".join(fields)]
+
+    # ICMP modules do not implement the TCP fields; asking for them aborts the
+    # scan. Keep the fields the selected module can actually emit.
+    module_fields = (
+        ZMAP_TCP_FIELDS if module.startswith("tcp_") else ZMAP_ICMP_FIELDS
+    )
+    usable = [f for f in fields if f in ZMAP_COMMON_FIELDS or f in module_fields]
+    if not usable:
+        usable = ["saddr"]
+    argv += ["-f", ",".join(usable)]
 
     max_targets = _int(params, "max_targets", "max targets", default=None, low=1, high=4_294_967_295)
     if max_targets is not None:
@@ -282,17 +337,22 @@ def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     if _flag(params, "cooldown"):
         argv += ["-c", "1"]
 
+    # Explicitly write results to stdout: some builds/packagings otherwise pick
+    # an output file, which would make the web console look empty.
+    argv += ["-o", "-"]
+
     blocklist = _text(params, "blocklist", "blocklist file", max_len=256)
     if blocklist:
         argv += ["-b", _resolve_data_file(blocklist, data_dir, "blocklist file")]
-    elif _flag(params, "disable_default_blacklist") or _flag(params, "no_blacklist") or _flag(params, "ignore_blacklist"):
-        # Create empty blocklist file
-        import tempfile
-        empty_blocklist = os.path.join(data_dir, ".empty_blocklist")
-        if not os.path.exists(empty_blocklist):
-            open(empty_blocklist, 'w').close()
-        argv += ["-b", empty_blocklist]
-
+    elif (
+        _flag(params, "disable_default_blacklist")
+        or _flag(params, "no_blacklist")
+        or _flag(params, "ignore_blacklist")
+        # Scanning your own LAN is a normal thing to do with a self-hosted
+        # tool, so do not let the bogon blocklist silently swallow the scan.
+        or _target_is_local(target)
+    ):
+        argv += ["-b", ZMAP_EMPTY_BLOCKLIST]
 
     if _flag(params, "dry_run"):
         argv.append("-d")
@@ -323,6 +383,11 @@ def tool_info() -> list[dict[str, Any]]:
     info: list[dict[str, Any]] = []
     for name in ("nmap", "zmap"):
         path = shutil.which(name)
+        if not path:
+            for p in [f"/usr/bin/{name}", f"/bin/{name}", f"/usr/sbin/{name}", f"/sbin/{name}", f"/usr/local/bin/{name}"]:
+                if os.path.exists(p) and os.access(p, os.X_OK):
+                    path = p
+                    break
         version = ""
         if path:
             try:

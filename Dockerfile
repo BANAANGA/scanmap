@@ -11,13 +11,18 @@ LABEL org.opencontainers.image.title="scanmap" \
       org.opencontainers.image.source="https://github.com/BANAANGA/scanmap" \
       org.opencontainers.image.licenses="MIT"
 
+# zmap runs as an unprivileged user; file capabilities make the raw sockets
+# work even when the runtime does not hand the capability to non-root
+# processes (the container still needs --cap-add NET_RAW).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         nmap \
         zmap \
         python3 \
         ca-certificates \
+        libcap2-bin \
     && rm -rf /var/lib/apt/lists/* \
+    && setcap cap_net_raw,cap_net_admin+eip /usr/sbin/zmap \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin scanmap \
     && mkdir -p /data /opt/scanmap \
     && chown -R scanmap:scanmap /data /opt/scanmap

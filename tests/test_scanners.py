@@ -115,12 +115,47 @@ class ZmapTest(unittest.TestCase):
         self.assertEqual(argv[argv.index("-B") + 1], "10M")
         self.assertEqual(argv[argv.index("-r") + 1], "5000")
         self.assertEqual(argv[argv.index("-i") + 1], "eth0")
-        self.assertEqual(argv[argv.index("-S") + 1], "40000")
+        # -s is --source-port; -S would be --source-ip.
+        self.assertEqual(argv[argv.index("-s") + 1], "40000")
+        self.assertNotIn("-S", argv)
         self.assertEqual(argv[argv.index("-M") + 1], "icmp_echoscan")
         self.assertEqual(argv[argv.index("-f") + 1], "saddr,ttl")
         self.assertEqual(argv[argv.index("-n") + 1], "100")
         self.assertIn("-d", argv)
         self.assertIn("-c", argv)
+
+    def test_results_are_written_to_stdout(self):
+        argv = build_zmap({"target": "8.8.8.8/32"})
+        self.assertEqual(argv[argv.index("-o") + 1], "-")
+
+    def test_verbosity_takes_a_level(self):
+        # `zmap -v` alone swallows the next flag ("invalid numeric value: -p").
+        argv = build_zmap({"target": "8.8.8.8/32"})
+        self.assertEqual(argv[argv.index("-v") + 1], "4")
+
+    def test_private_target_ignores_builtin_blocklist(self):
+        for target in ("192.168.1.0/24", "10.0.0.1", "127.0.0.1/32", "fe80::1"):
+            with self.subTest(target=target):
+                argv = build_zmap({"target": target})
+                self.assertEqual(argv[argv.index("-b") + 1], "/dev/null")
+
+    def test_public_target_keeps_builtin_blocklist(self):
+        argv = build_zmap({"target": "8.8.8.8/32"})
+        self.assertNotIn("-b", argv)
+        argv = build_zmap({"target": "8.8.8.8/32", "disable_default_blacklist": True})
+        self.assertEqual(argv[argv.index("-b") + 1], "/dev/null")
+
+    def test_icmp_scan_drops_tcp_only_fields(self):
+        argv = build_zmap(
+            {"target": "10.0.0.0/8", "probe_module": "icmp_echoscan", "output_fields": "saddr,dport"}
+        )
+        self.assertEqual(argv[argv.index("-f") + 1], "saddr")
+
+    def test_tcp_field_names_match_zmap(self):
+        argv = build_zmap(
+            {"target": "10.0.0.0/8", "output_fields": "saddr,sport,dport,seqnum,acknum"}
+        )
+        self.assertEqual(argv[argv.index("-f") + 1], "saddr,sport,dport,seqnum,acknum")
 
     def test_single_target_only(self):
         with self.assertRaises(ValidationError):

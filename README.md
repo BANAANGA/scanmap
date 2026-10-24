@@ -91,13 +91,32 @@ nmap -v -sS -T4 -p 22,80,443 -sV 192.168.1.0/24
 Target `10.0.0.0/8`, port `443`, bandwidth `10M`, output fields `saddr,dport`:
 
 ```
-zmap -p 443 -B 10M -M tcp_synscan -f saddr,dport 10.0.0.0/8
+zmap -v 4 -p 443 -B 10M -M tcp_synscan -f saddr,dport -o - 10.0.0.0/8
 ```
 
 > **Before you zmap:** zmap deliberately scans the whole address block at high
 > speed. Always use a blocklist for reserved ranges. Put your blocklist in
 > `data/` and reference it as `blocklist.txt` (paths are resolved inside
 > `SCANMAP_DATA_DIR` only).
+
+#### Why does zmap show no results?
+
+zmap ships with a blocklist of private and reserved ranges (`10.0.0.0/8`,
+`192.168.0.0/16`, `127.0.0.0/8`, …) and, when a scan targets one of those
+ranges, aborts with `zero eligible addresses to scan`. That is the right
+default for the public Internet but useless for a LAN scan, so scanmap:
+
+- automatically passes an empty blocklist (`-b /dev/null`) when the target is a
+  private, loopback or link-local address;
+- exposes an **Ignore built-in blocklist** checkbox (on by default) for public
+  targets;
+- always writes results to stdout (`-o -`) and runs zmap with `-v 4`, so the
+  console shows the interface, gateway MAC, output module and progress;
+- adds a hint to the console when a zmap job finishes without a single host.
+
+If a scan still finds nothing, the host is probably not answering on that port
+(zmap only reports *successful* TCP responses: `SYN-ACK` or `RST`). Verify with
+`nmap -Pn -p <port> <target>` from the same container.
 
 ## Configuration
 

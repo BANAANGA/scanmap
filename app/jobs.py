@@ -8,6 +8,8 @@ of the container's memory.
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -19,6 +21,12 @@ from typing import Any
 
 MAX_OUTPUT_LINES = 20_000
 KILL_GRACE_SECONDS = 5.0
+
+# zmap's csv output module prints "saddr,dport" and then one "ip,port" line per
+# responding host. Anything else on stdout is logging.
+ZMAP_RESULT_RE = re.compile(
+    r"^(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9A-Fa-f:]*:[0-9A-Fa-f:]+)(?:[,\s]|$)"
+)
 
 
 @dataclass
@@ -39,6 +47,10 @@ class Job:
     def append(self, line: str) -> None:
         with self._lock:
             self._lines.append(line)
+
+    def any_line(self, pattern: re.Pattern[str]) -> bool:
+        with self._lock:
+            return any(pattern.match(line) for line in self._lines)
 
     def _duration(self) -> float | None:
         if self.started is None:
@@ -72,6 +84,10 @@ class Job:
             payload["next"] = total
             payload["truncated"] = total >= MAX_OUTPUT_LINES
         return payload
+
+
+def _has_zmap_results(job: Job) -> bool:
+    return job.any_line(ZMAP_RESULT_RE)
 
 
 class JobManager:
@@ -179,7 +195,7 @@ class JobManager:
                 # zmap buffers heavily without a tty; force line-buffering
                 env["ZMAP_STDOUT_FLUSH"] = "1"
                 argv = job.argv
-                if argv and argv[0] == "zmap":
+                if argv and argv[0] == "zmap" and shutil.which("stdbuf"):
                     argv = ["stdbuf", "-oL", "-eL"] + argv
                 proc = subprocess.Popen(
                     argv,
@@ -221,6 +237,13 @@ class JobManager:
                 job.status = "cancelled"
             elif job.returncode == 0:
                 job.status = "finished"
+                if job.scanner == "zmap" and "-d" not in job.argv and not _has_zmap_results(job):
+                    job.append(
+                        "[scanmap] zmap finished without reporting any hosts. "
+                        "The port may be closed or filtered, the target may be "
+                        "excluded by the blocklist, or the packets may not reach "
+                        "the network (check the container's NET_RAW capability)."
+                    )
             else:
                 job.status = "failed"
                 if not job.error:

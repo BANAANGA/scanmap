@@ -38,15 +38,53 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test the image
         run: |
-          docker run -d --name scanmap-ci -p 8420:8420 --cap-add NET_RAW --cap-add NET_ADMIN scanmap:ci
+          # Both containers share a user-defined network so zmap has a default
+          # gateway on the same subnet as its target.
+          docker network create scanmap-ci-net
+          docker run -d --name scanmap-target --network scanmap-ci-net nginx:alpine
+          docker run -d --name scanmap-ci --network scanmap-ci-net -p 8420:8420 \
+            --cap-add NET_RAW --cap-add NET_ADMIN scanmap:ci
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8420/api/health; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8420/api/health; then break; fi
             sleep 1
           done
-          docker logs scanmap-ci
-          exit 1
+          curl -fsS http://127.0.0.1:8420/api/health
       - name: Show scanner versions
         run: docker exec scanmap-ci sh -c 'nmap --version | head -1; zmap --version'
+      - name: zmap finds an open port (direct)
+        run: |
+          TARGET_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' scanmap-target)
+          echo "target is $TARGET_IP"
+          docker exec scanmap-ci zmap -v 4 -p 80 -B 1M -M tcp_synscan \
+            -f saddr,dport -o - -b /dev/null -c 2 "$TARGET_IP/32" | tee /tmp/zmap.out
+          grep -q "$TARGET_IP" /tmp/zmap.out
+      - name: zmap finds an open port (through the API)
+        run: |
+          TARGET_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' scanmap-target)
+          JOB=$(curl -fsS -X POST http://127.0.0.1:8420/api/jobs \
+            -H 'content-type: application/json' \
+            -d "{\"scanner\":\"zmap\",\"params\":{\"target\":\"$TARGET_IP/32\",\"port\":80,\"bandwidth\":\"1M\"}}")
+          echo "$JOB"
+          JOB_ID=$(echo "$JOB" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          for i in $(seq 1 60); do
+            curl -fsS "http://127.0.0.1:8420/api/jobs/$JOB_ID" -o /tmp/job.json
+            STATUS=$(python3 -c 'import json; print(json.load(open("/tmp/job.json"))["status"])')
+            echo "status: $STATUS"
+            if [ "$STATUS" = "finished" ] || [ "$STATUS" = "failed" ]; then break; fi
+            sleep 1
+          done
+          cat /tmp/job.json
+          python3 - "$TARGET_IP" <<'PY'
+          import json, sys
+          target = sys.argv[1]
+          job = json.load(open("/tmp/job.json"))
+          assert job["status"] == "finished", job
+          assert any(line.startswith(target) for line in job["output"]), job["output"][-20:]
+          print("zmap reported", target)
+          PY
       - name: Cleanup
         if: always()
-        run: docker rm -f scanmap-ci
+        run: |
+          docker logs scanmap-ci || true
+          docker rm -f scanmap-ci scanmap-target || true
+          docker network rm scanmap-ci-net || true
