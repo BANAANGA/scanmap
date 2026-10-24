@@ -238,7 +238,7 @@ def build_nmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
 
 def build_zmap(params: dict[str, Any], data_dir: str = "/data") -> list[str]:
     target = validate_zmap_target(_text(params, "target", "target"))
-    argv: list[str] = ["zmap"]
+    argv: list[str] = ["zmap", "-v"]
 
     port = _int(params, "port", "port", default=443)
     argv += ["-p", str(port)]
