@@ -37,21 +37,45 @@ space quickly.
 
 ## Quick start
 
+Pull from GHCR and run with docker compose:
+
 ```bash
-git clone https://github.com/BANAANGA/scanmap.git
-cd scanmap
-docker compose up --build
+# Create a working directory
+mkdir -p scanmap && cd scanmap
+
+# Download compose file
+curl -L -o docker-compose.yml https://raw.githubusercontent.com/BANAANGA/scanmap/main/docker-compose.yml
+
+# Create data directory for blocklists and user DB
+mkdir -p data
+
+# Start the container (pulls ghcr.io/banaanga/scanmap:latest automatically)
+docker compose up -d
 ```
 
 Then open <http://localhost:8080>.
 
+On first run, if no users exist, you'll be redirected to `/setup` to create the admin account.
+
 Without compose:
 
 ```bash
-docker build -t scanmap .
+docker pull ghcr.io/banaanga/scanmap:latest
 docker run --rm -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
-  -v "$PWD/data:/data" scanmap
+  -v "$PWD/data:/data" \
+  ghcr.io/banaanga/scanmap:latest
 ```
+
+Using environment variables:
+
+```bash
+docker run --rm -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
+  -e SCANMAP_USER=admin -e SCANMAP_PASSWORD=change-me \
+  -v "$PWD/data:/data" \
+  ghcr.io/banaanga/scanmap:latest
+```
+
+> With `SCANMAP_USER`/`SCANMAP_PASSWORD` set, HTTP basic auth is used. Otherwise the built-in session auth is used (first-run admin registration). Put a TLS reverse proxy in front if exposing beyond localhost.
 
 ### nmap example
 
