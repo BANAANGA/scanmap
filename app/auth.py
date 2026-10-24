@@ -34,44 +34,58 @@ class AuthManager:
         self.data_dir = data_dir
         try:
             os.makedirs(self.data_dir, exist_ok=True)
+            # Test if writable
+            test_file = os.path.join(self.data_dir, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.remove(test_file)
         except OSError:
             # Fallback for read-only or unwriteable dirs (e.g. CI)
             self.data_dir = os.environ.get("TMPDIR") or "/tmp"
             os.makedirs(self.data_dir, exist_ok=True)
         self.db_path = os.path.join(self.data_dir, "users.db")
-        self._init_db()
+        try:
+            self._init_db()
+        except Exception:
+            self.data_dir = os.environ.get("TMPDIR") or "/tmp"
+            os.makedirs(self.data_dir, exist_ok=True)
+            self.db_path = os.path.join(self.data_dir, "users.db")
+            self._init_db()
         self._sessions: dict[str, dict[str, Any]] = {}
         self._session_lock = __import__("threading").Lock()
 
     def _init_db(self) -> None:
-        con = sqlite3.connect(self.db_path)
-        cur = con.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                is_admin INTEGER NOT NULL DEFAULT 0,
-                created_at REAL NOT NULL
+        try:
+            con = sqlite3.connect(self.db_path)
+            cur = con.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    is_admin INTEGER NOT NULL DEFAULT 0,
+                    created_at REAL NOT NULL
+                )
+                """
             )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-                token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                created_at REAL NOT NULL,
-                last_seen REAL NOT NULL,
-                expires_at REAL NOT NULL,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    last_seen REAL NOT NULL,
+                    expires_at REAL NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+                """
             )
-            """
-        )
-        con.commit()
-        con.close()
+            con.commit()
+            con.close()
+        except Exception as e:
+            raise RuntimeError(f"Cannot open database at {self.db_path}: {e}") from e
 
     def has_users(self) -> bool:
         con = sqlite3.connect(self.db_path)
