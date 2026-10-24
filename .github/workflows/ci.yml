@@ -38,9 +38,9 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test the image
         run: |
-          docker run -d --name scanmap-ci -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN scanmap:ci
+          docker run -d --name scanmap-ci -p 8420:8420 --cap-add NET_RAW --cap-add NET_ADMIN scanmap:ci
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8080/api/health; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8420/api/health; then exit 0; fi
             sleep 1
           done
           docker logs scanmap-ci
