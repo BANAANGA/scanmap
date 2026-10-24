@@ -11,6 +11,8 @@ import os
 import re
 import shutil
 import signal
+import socket
+import struct
 import subprocess
 import threading
 import time
@@ -27,6 +29,63 @@ KILL_GRACE_SECONDS = 5.0
 ZMAP_RESULT_RE = re.compile(
     r"^(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9A-Fa-f:]*:[0-9A-Fa-f:]+)(?:[,\s]|$)"
 )
+MAC_ADDRESS_RE = re.compile(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}")
+
+
+def _default_gateway(interface: str | None) -> tuple[str, str] | None:
+    try:
+        with open("/proc/net/route", encoding="ascii") as routes:
+            next(routes, None)
+            for line in routes:
+                fields = line.split()
+                if len(fields) < 4 or (interface and fields[0] != interface):
+                    continue
+                try:
+                    destination, gateway, flags = (
+                        int(fields[1], 16),
+                        int(fields[2], 16),
+                        int(fields[3], 16),
+                    )
+                except ValueError:
+                    continue
+                if destination == 0 and gateway and flags & 0x3 == 0x3:
+                    return socket.inet_ntoa(struct.pack("<I", gateway)), fields[0]
+    except OSError:
+        return None
+    return None
+
+
+def _resolve_zmap_gateway_mac(interface: str | None = None) -> tuple[str, str] | None:
+    route = _default_gateway(interface)
+    if route is None:
+        return None
+    gateway, device = route
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.sendto(b"\0", (gateway, 9))
+    except OSError:
+        return None
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        try:
+            with open("/proc/net/arp", encoding="ascii") as entries:
+                next(entries, None)
+                for line in entries:
+                    fields = line.split()
+                    if (
+                        len(fields) >= 6
+                        and fields[0] == gateway
+                        and fields[2] != "0x0"
+                        and fields[5] == device
+                        and MAC_ADDRESS_RE.fullmatch(fields[3])
+                    ):
+                        return gateway, fields[3]
+        except OSError:
+            return None
+        time.sleep(0.05)
+    return None
 
 
 @dataclass
@@ -194,7 +253,16 @@ class JobManager:
                 env["PYTHONUNBUFFERED"] = "1"
                 # zmap buffers heavily without a tty; force line-buffering
                 env["ZMAP_STDOUT_FLUSH"] = "1"
-                argv = job.argv
+                argv = list(job.argv)
+                if job.scanner == "zmap" and "-G" not in argv:
+                    interface = None
+                    if "-i" in argv:
+                        interface = argv[argv.index("-i") + 1]
+                    resolved = _resolve_zmap_gateway_mac(interface)
+                    if resolved:
+                        gateway, mac = resolved
+                        argv[-1:-1] = ["-G", mac]
+                        job.append(f"[scanmap] using gateway {gateway} MAC {mac}")
                 if argv and argv[0] == "zmap" and shutil.which("stdbuf"):
                     argv = ["stdbuf", "-oL", "-eL"] + argv
                 proc = subprocess.Popen(

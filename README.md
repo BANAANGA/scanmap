@@ -110,8 +110,10 @@ default for the public Internet but useless for a LAN scan, so scanmap:
   private, loopback or link-local address;
 - exposes an **Ignore built-in blocklist** checkbox (on by default) for public
   targets;
+- resolves the Docker gateway MAC from the kernel neighbor table and passes
+  it to zmap, avoiding a stall during zmap's gateway discovery;
 - always writes results to stdout (`-o -`) and runs zmap with `-v 4`, so the
-  console shows the interface, gateway MAC, output module and progress;
+  console shows the interface, output module and progress;
 - adds a hint to the console when a zmap job finishes without a single host.
 
 If a scan still finds nothing, the host is probably not answering on that port
