@@ -32,7 +32,12 @@ class User:
 class AuthManager:
     def __init__(self, data_dir: str) -> None:
         self.data_dir = data_dir
-        os.makedirs(self.data_dir, exist_ok=True)
+        try:
+            os.makedirs(self.data_dir, exist_ok=True)
+        except OSError:
+            # Fallback for read-only or unwriteable dirs (e.g. CI)
+            self.data_dir = os.environ.get("TMPDIR") or "/tmp"
+            os.makedirs(self.data_dir, exist_ok=True)
         self.db_path = os.path.join(self.data_dir, "users.db")
         self._init_db()
         self._sessions: dict[str, dict[str, Any]] = {}
