@@ -7,7 +7,7 @@ Two scanners, one UI: use nmap when you want detail (service/version detection,
 NSE scripts, OS fingerprinting) and zmap when you want to sweep a large address
 space quickly.
 
-![status](https://img.shields.io/badge/status-early%20preview-orange) ![license](https://img.shields.io/badge/license-MIT-blue)
+![CI](https://github.com/BANAANGA/scanmap/actions/workflows/ci.yml/badge.svg) ![status](https://img.shields.io/badge/status-early%20preview-orange) ![license](https://img.shields.io/badge/license-MIT-blue)
 
 > ## ⚠️ Authorised use only
 >
