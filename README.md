@@ -158,9 +158,26 @@ Accepted `params` per scanner:
 `source_port`, `probe_module`, `output_fields`, `max_targets`, `cooldown`,
 `blocklist`, `dry_run`.
 
-## Running without Docker
+## Update
 
-Only Python ≥ 3.9 and the scanners themselves are required:
+To pull the latest image and restart:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Or with plain docker:
+
+```bash
+docker pull ghcr.io/banaanga/scanmap:latest
+docker stop scanmap 2>/dev/null; docker rm scanmap 2>/dev/null
+docker run --rm -d --name scanmap -p 8080:8080 --cap-add NET_RAW --cap-add NET_ADMIN \
+  -v "$PWD/data:/data" \
+  ghcr.io/banaanga/scanmap:latest
+```
+
+Your data (users, blocklists) persists in the `data/` volume.
 
 ```bash
 sudo apt install nmap zmap python3
