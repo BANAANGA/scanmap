@@ -489,6 +489,85 @@ button {
   color: var(--accent);
 }
 
+.results-wrap {
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #060a11;
+  overflow: hidden;
+}
+
+.results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.results-head h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#copy-status {
+  min-height: 1.4em;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.results-scroll {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: left;
+}
+
+.results-table th,
+.results-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(31, 49, 73, 0.7);
+  white-space: nowrap;
+}
+
+.results-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.copy-value {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: copy;
+}
+
+.copy-value:hover,
+.copy-value:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 .console {
   margin: 0;
   padding: 14px 16px;
