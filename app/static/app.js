@@ -14,6 +14,8 @@ const state = {
   resultFields: null,
   resultRows: [],
   selectedResultAddresses: new Set(),
+  currentNmapHost: null,
+  nmapPortSection: false,
   copyStatusTimer: null,
   busy: false,
 };
@@ -262,6 +264,8 @@ function selectJob(jobId) {
   state.resultFields = null;
   state.resultRows = [];
   state.selectedResultAddresses = new Set();
+  state.currentNmapHost = null;
+  state.nmapPortSection = false;
   state.job = null;
   $("#console").textContent = "";
   $("#results-wrap").classList.add("hidden");
@@ -297,6 +301,9 @@ async function poll() {
       job.output.forEach((line) => appendConsole(line));
       state.offset = job.next;
     }
+    if (job.scanner === "nmap" && TERMINAL.has(job.status)) {
+      finishNmapHost();
+    }
     updateJobUi(job);
     if (TERMINAL.has(job.status) && state.timer) {
       clearInterval(state.timer);
@@ -320,7 +327,7 @@ function updateJobUi(job) {
     if (!state.lines.includes(job.error)) appendConsole(job.error, true);
   }
   const hosts = state.hosts.size;
-  $("#host-counter").textContent = job.scanner === "zmap" && hosts ? `${hosts} hosts` : "";
+  $("#host-counter").textContent = hosts ? `${hosts} hosts` : "";
 }
 
 /* ---------------------------------------------------------------- console */
@@ -329,6 +336,12 @@ function appendConsole(line, isError = false) {
   const consoleEl = $("#console");
   const atBottom = consoleEl.scrollHeight - consoleEl.scrollTop - consoleEl.clientHeight < 40;
   state.lines.push(line);
+  if (!isError && state.job?.scanner === "nmap" && appendNmapResult(line)) {
+    if (state.lines.length === 1 && consoleEl.textContent.startsWith("Select a job")) {
+      consoleEl.textContent = "";
+    }
+    return;
+  }
   if (!isError && state.job?.scanner === "zmap" && appendZmapResult(line)) {
     if (state.lines.length === 1 && consoleEl.textContent.startsWith("Select a job")) {
       consoleEl.textContent = "";
@@ -343,6 +356,92 @@ function appendConsole(line, isError = false) {
   node.textContent = `${line}\n`;
   consoleEl.append(node);
   if (atBottom) consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+function appendNmapResult(line) {
+  const report = line.match(/^Nmap scan report for (.+)$/);
+  if (report) {
+    finishNmapHost();
+    const label = report[1];
+    const address = label.match(/\(([^()]+)\)$/)?.[1];
+    const name = address ? label.slice(0, -(address.length + 3)) : label;
+    state.currentNmapHost = {
+      name,
+      address: address || label,
+      display: address ? `${name} (${address})` : name,
+      up: false,
+      portCount: 0,
+    };
+    state.nmapPortSection = false;
+    return true;
+  }
+
+  if (!state.currentNmapHost) return false;
+  if (/^Host is up(?:\s|$)/.test(line)) {
+    state.currentNmapHost.up = true;
+    return true;
+  }
+  if (/^Host seems down(?:\s|$)/.test(line)) {
+    state.currentNmapHost.up = false;
+    state.currentNmapHost.down = true;
+    return true;
+  }
+  if (/^PORT\s+STATE\s+SERVICE(?:\s|$)/.test(line)) {
+    state.nmapPortSection = true;
+    return true;
+  }
+
+  if (state.nmapPortSection) {
+    const port = line.match(/^(\d+\/(?:tcp|udp|sctp))\s+(\S+)\s+(\S+)(?:\s+(.*))?$/);
+    if (port) {
+      const host = state.currentNmapHost;
+      host.portCount += 1;
+      state.hosts.add(host.address);
+      addResultRow([host.display, port[1], port[2], port[3], port[4] || ""]);
+      $("#host-counter").textContent = `${state.hosts.size} hosts`;
+      return true;
+    }
+  }
+  return false;
+}
+
+function finishNmapHost() {
+  const host = state.currentNmapHost;
+  if (host?.up && host.portCount === 0) {
+    addResultRow([host.display, "", "up", "host", ""]);
+  } else if (host?.down) {
+    addResultRow([host.display, "", "down", "host", ""]);
+  }
+  if (host && (host.up || host.down || host.portCount > 0)) {
+    state.hosts.add(host.address);
+    $("#host-counter").textContent = `${state.hosts.size} hosts`;
+  }
+  state.currentNmapHost = null;
+  state.nmapPortSection = false;
+}
+
+function addResultRow(values) {
+  const fields = ["Host", "Port", "State", "Service", "Version"];
+  if (!state.resultFields) state.resultFields = fields;
+  renderResultHeaders(state.resultFields);
+  const row = document.createElement("tr");
+  values.forEach((value) => {
+    const cell = document.createElement("td");
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "copy-value";
+    copyButton.textContent = value;
+    copyButton.title = "Click to copy";
+    copyButton.setAttribute("aria-label", `Copy ${value}`);
+    copyButton.disabled = value === "";
+    copyButton.addEventListener("click", () => copyResultValue(value));
+    cell.append(copyButton);
+    row.append(cell);
+  });
+  $("#results-table tbody").append(row);
+  state.resultRows.push(values);
+  $("#copy-all-results").disabled = false;
+  $("#save-results-csv").disabled = false;
 }
 
 function parseCsvLine(line) {
@@ -413,22 +512,7 @@ function appendZmapResult(line) {
     selectCell.append(checkbox);
     row.append(selectCell);
   }
-  values.forEach((value) => {
-    const cell = document.createElement("td");
-    const copyButton = document.createElement("button");
-    copyButton.type = "button";
-    copyButton.className = "copy-value";
-    copyButton.textContent = value;
-    copyButton.title = "Click to copy";
-    copyButton.setAttribute("aria-label", `Copy ${value}`);
-    copyButton.addEventListener("click", () => copyResultValue(value));
-    cell.append(copyButton);
-    row.append(cell);
-  });
-  $("#results-table tbody").append(row);
-  state.resultRows.push(values);
-  $("#copy-all-results").disabled = false;
-  $("#save-results-csv").disabled = false;
+  addResultRow(values);
 
   if (addressIndex >= 0) state.hosts.add(values[addressIndex]);
   $("#host-counter").textContent = state.hosts.size ? `${state.hosts.size} hosts` : "";
@@ -547,7 +631,7 @@ $("#save-results-csv").addEventListener("click", () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `scanmap-zmap-${state.jobId}.csv`;
+  link.download = `scanmap-${state.job?.scanner || "scan"}-${state.jobId}.csv`;
   document.body.append(link);
   link.click();
   link.remove();
