@@ -576,6 +576,14 @@ button {
   text-decoration: underline;
 }
 
+.result-select {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .console {
   margin: 0;
   padding: 14px 16px;
