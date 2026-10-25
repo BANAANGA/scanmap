@@ -30,6 +30,8 @@ space quickly.
   list without replacing existing targets.
 - **Job list** — start several scans, watch status, cancel a running one,
   download the log.
+- **User administration** — create accounts, manage administrator access, and
+  revoke users through the built-in session-auth admin panel.
 - **Allow-listed arguments** — the UI never exposes a free-form "extra flags"
   box. Targets, ports, scripts and output fields are validated server-side and
   handed to `subprocess` as an argv list (no shell), so the container does not
@@ -61,6 +63,11 @@ docker compose up -d
 Then open <http://localhost:8420>.
 
 On first run, if no users exist, you'll be redirected to `/setup` to create the admin account.
+After signing in with session authentication, administrators can open **Users** in the
+header or visit `/admin` to create accounts, grant or remove administrator access, and
+delete users. The final administrator and the currently signed-in administrator cannot
+be demoted or deleted from the panel. Environment-configured HTTP Basic Auth remains a
+single shared credential and does not provide user administration.
 
 Without compose:
 

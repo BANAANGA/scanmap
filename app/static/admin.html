@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>User administration · scanmap</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/admin.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="admin-brand" href="/">
+        <span class="admin-brand-mark" aria-hidden="true">◎</span>
+        <span><strong>scanmap</strong><small>User administration</small></span>
+      </a>
+      <nav class="account-menu" aria-label="Account">
+        <a class="button-link" href="/">Back to scans</a>
+        <button class="button-link" id="logout" type="button">Sign out</button>
+      </nav>
+    </header>
+    <main class="admin-main">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Users</h2>
+            <p class="muted">Create accounts and manage administrator access.</p>
+          </div>
+          <button class="button" id="refresh-users" type="button">Refresh</button>
+        </div>
+        <p class="auth-message" id="admin-message" role="status"></p>
+        <div class="table-scroll">
+          <table class="admin-users">
+            <thead>
+              <tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="user-list"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel create-user-panel">
+        <div class="panel-head"><h2>Add user</h2></div>
+        <form id="create-user-form" class="create-user-form">
+          <label class="auth-field">
+            <span>Username</span>
+            <input name="username" autocomplete="off" minlength="3" maxlength="32" required />
+          </label>
+          <label class="auth-field">
+            <span>Temporary password</span>
+            <input type="password" name="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <label class="admin-checkbox">
+            <input type="checkbox" name="is_admin" />
+            Administrator access
+          </label>
+          <button class="primary" type="submit">Create user</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

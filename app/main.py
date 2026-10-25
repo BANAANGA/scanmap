@@ -21,9 +21,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .jobs import JobManager
 from .scanners import ValidationError, build_argv, tool_info
-from .auth import AuthManager
+from .auth import AuthManager, User
 
-VERSION = "0.1.0"
+VERSION = "0.9.1"
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 
@@ -204,7 +204,14 @@ class ScanMapHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
 
         # Allow auth endpoints without session auth
-        if path in ("/api/health", "/api/auth/me", "/login", "/setup"):
+        if path in (
+            "/api/health",
+            "/api/auth/me",
+            "/login",
+            "/setup",
+            "/static/style.css",
+            "/static/auth.js",
+        ):
             pass
         elif not self._authorized():
             # For browser requests to root, redirect to login
@@ -232,6 +239,13 @@ class ScanMapHandler(BaseHTTPRequestHandler):
         elif path == "/setup":
             self._serve_setup()
             return
+        elif path == "/admin":
+            user = self._get_user()
+            if not user or not user.is_admin:
+                self._error(HTTPStatus.FORBIDDEN, "administrator access required")
+                return
+            self._serve_static("admin.html")
+            return
         elif path == "/api/health":
             self._send_json(HTTPStatus.OK, {"status": "ok", "version": VERSION, "auth_required": self._needs_auth(), "has_users": AUTH.has_users()})
         elif path == "/api/auth/me":
@@ -240,7 +254,17 @@ class ScanMapHandler(BaseHTTPRequestHandler):
                 return
             user = self._get_user()
             if user:
-                self._send_json(HTTPStatus.OK, {"user": {"username": user.username, "is_admin": user.is_admin}, "auth": "session"})
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "user": {
+                            "id": user.id,
+                            "username": user.username,
+                            "is_admin": user.is_admin,
+                        },
+                        "auth": "session",
+                    },
+                )
             else:
                 if not AUTH.has_users():
                     self._send_json(HTTPStatus.OK, {"user": None, "setup": True, "auth": "session"})
@@ -251,6 +275,14 @@ class ScanMapHandler(BaseHTTPRequestHandler):
         elif path == "/api/tools":
             refresh = query.get("refresh", ["0"])[0] in {"1", "true", "yes"}
             self._send_json(HTTPStatus.OK, {"tools": get_tools(refresh)})
+        elif path == "/api/admin/users":
+            user = self._require_admin()
+            if not user:
+                return
+            self._send_json(
+                HTTPStatus.OK,
+                {"users": [self._user_payload(item) for item in AUTH.list_users()]},
+            )
         elif path == "/api/jobs":
             self._send_json(HTTPStatus.OK, {"jobs": JOBS.list()})
         elif path.startswith("/api/jobs/"):
@@ -295,7 +327,11 @@ class ScanMapHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
             return
 
-        if path == "/api/jobs":
+        if path == "/api/admin/users":
+            if not self._require_admin():
+                return
+            self._create_user()
+        elif path == "/api/jobs":
             self._create_job()
         elif path == "/api/preview":
             self._preview_job()
@@ -310,9 +346,15 @@ class ScanMapHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:  # noqa: N802
         if not self._authorized():
+            self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
             return
         path = urlparse(self.path).path.rstrip("/") or "/"
-        if path.startswith("/api/jobs/"):
+        if path.startswith("/api/admin/users/"):
+            user = self._require_admin()
+            if not user:
+                return
+            self._delete_user(path[len("/api/admin/users/") :], user)
+        elif path.startswith("/api/jobs/"):
             job_id = unquote(path[len("/api/jobs/") :])
             if JOBS.delete(job_id):
                 self.send_response(HTTPStatus.NO_CONTENT)
@@ -324,7 +366,99 @@ class ScanMapHandler(BaseHTTPRequestHandler):
         else:
             self._error(HTTPStatus.NOT_FOUND, "not found")
 
+    def do_PATCH(self) -> None:  # noqa: N802
+        if not self._authorized():
+            self._error(HTTPStatus.UNAUTHORIZED, "authentication required")
+            return
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if not path.startswith("/api/admin/users/"):
+            self._error(HTTPStatus.NOT_FOUND, "not found")
+            return
+        user = self._require_admin()
+        if not user:
+            return
+        self._update_user_role(path[len("/api/admin/users/") :], user)
+
     # -- handlers ---------------------------------------------------------- #
+
+    @staticmethod
+    def _user_payload(user: User) -> dict[str, Any]:
+        return {
+            "id": user.id,
+            "username": user.username,
+            "is_admin": user.is_admin,
+            "created_at": user.created_at,
+        }
+
+    def _require_admin(self) -> User | None:
+        user = self._get_user()
+        if not user or not user.is_admin:
+            self._error(HTTPStatus.FORBIDDEN, "administrator access required")
+            return None
+        return user
+
+    def _admin_target_user(self, raw_id: str, current_user: User) -> int | None:
+        try:
+            user_id = int(raw_id)
+        except ValueError:
+            self._error(HTTPStatus.BAD_REQUEST, "user id must be an integer")
+            return None
+        if user_id == current_user.id:
+            self._error(HTTPStatus.BAD_REQUEST, "you cannot change your own account here")
+            return None
+        return user_id
+
+    def _create_user(self) -> None:
+        payload = self._read_json()
+        if payload is None:
+            return
+        username = str(payload.get("username", ""))
+        password = str(payload.get("password", ""))
+        is_admin = payload.get("is_admin", False)
+        if not isinstance(is_admin, bool):
+            self._error(HTTPStatus.BAD_REQUEST, "is_admin must be a boolean")
+            return
+        try:
+            user = AUTH.create_user(username, password, is_admin=is_admin)
+        except ValueError as exc:
+            self._error(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_json(HTTPStatus.CREATED, {"user": self._user_payload(user)})
+
+    def _update_user_role(self, raw_id: str, current_user) -> None:
+        user_id = self._admin_target_user(raw_id, current_user)
+        if user_id is None:
+            return
+        payload = self._read_json()
+        if payload is None:
+            return
+        is_admin = payload.get("is_admin")
+        if not isinstance(is_admin, bool):
+            self._error(HTTPStatus.BAD_REQUEST, "is_admin must be a boolean")
+            return
+        try:
+            updated = AUTH.update_user_role(user_id, is_admin)
+        except ValueError as exc:
+            self._error(HTTPStatus.CONFLICT, str(exc))
+            return
+        if not updated:
+            self._error(HTTPStatus.NOT_FOUND, "user not found")
+            return
+        self._send_json(HTTPStatus.OK, {"id": user_id, "is_admin": is_admin})
+
+    def _delete_user(self, raw_id: str, current_user) -> None:
+        user_id = self._admin_target_user(raw_id, current_user)
+        if user_id is None:
+            return
+        try:
+            deleted = AUTH.delete_user(user_id)
+        except ValueError as exc:
+            self._error(HTTPStatus.CONFLICT, str(exc))
+            return
+        if not deleted:
+            self._error(HTTPStatus.NOT_FOUND, "user not found")
+            return
+        self._send_json(HTTPStatus.OK, {"deleted": user_id})
 
     def _create_job(self) -> None:
         payload = self._read_json()
@@ -408,14 +542,7 @@ class ScanMapHandler(BaseHTTPRequestHandler):
             self._security_headers()
             self.end_headers()
             return
-        body = self._login_html().encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self._security_headers()
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+        self._serve_static("login.html")
 
     def _serve_setup(self) -> None:
         if CONFIG.basic_auth_enabled:
@@ -427,14 +554,7 @@ class ScanMapHandler(BaseHTTPRequestHandler):
             self._security_headers()
             self.end_headers()
             return
-        body = self._setup_html().encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self._security_headers()
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+        self._serve_static("setup.html")
 
     def _do_setup(self) -> None:
         if CONFIG.basic_auth_enabled:
@@ -449,12 +569,10 @@ class ScanMapHandler(BaseHTTPRequestHandler):
         username = str(payload.get("username", ""))
         password = str(payload.get("password", ""))
         try:
-            user = AUTH.create_user(username, password, is_admin=True)
+            user = AUTH.create_initial_admin(username, password)
         except ValueError as exc:
-            self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            return
-        if not user:
-            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "failed to create user")
+            status = HTTPStatus.FORBIDDEN if str(exc) == "admin already exists" else HTTPStatus.BAD_REQUEST
+            self._error(status, str(exc))
             return
         token = AUTH.create_session(user.id)
         self.send_response(HTTPStatus.OK)
@@ -505,82 +623,6 @@ class ScanMapHandler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
-    def _login_html(self) -> str:
-        return """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Login - scanmap</title>
-<link rel="stylesheet" href="/static/style.css">
-<style>
-.auth-wrap{max-width:420px;margin:80px auto;padding:24px}
-.auth-card{background:linear-gradient(180deg,var(--panel),#0c1420);border:1px solid var(--line);border-radius:var(--radius);padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.28)}
-.auth-card h1{margin:0 0 6px;font-size:22px}
-.auth-card p{margin:0 0 18px;color:var(--muted)}
-.auth-card label{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.auth-card input{padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:#0a121d;color:var(--text);font:inherit}
-.auth-card button{width:100%;padding:11px;border-radius:9px;border:0;background:linear-gradient(135deg,var(--accent),#1fb98d);color:#04120d;font-weight:700;cursor:pointer}
-.auth-card .err{color:var(--danger);font-size:13px;margin-top:10px;min-height:18px}
-</style></head>
-<body>
-<div class="auth-wrap">
-<div class="auth-card">
-<div class="brand" style="margin-bottom:18px"><svg class="logo" viewBox="0 0 64 64"><circle cx="32" cy="32" r="18" fill="none" stroke="currentColor" stroke-width="4"/><circle cx="32" cy="32" r="7" fill="currentColor"/><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 8"/></svg><div><h1>scanmap</h1><p>sign in to continue</p></div></div>
-<form id="login-form">
-<label><span>Username</span><input name="username" autocomplete="username" required></label>
-<label><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
-<button type="submit">Sign in</button>
-<div class="err" id="err"></div>
-</form>
-</div></div>
-<script>
-document.getElementById('login-form').addEventListener('submit',async e=>{
-e.preventDefault();
-const form=new FormData(e.target);
-const body={username:form.get('username'),password:form.get('password')};
-const res=await fetch('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-if(res.ok){location.href='/'}else{document.getElementById('err').textContent=(await res.json()).error||'login failed'}
-});
-</script>
-</body></html>"""
-
-    def _setup_html(self) -> str:
-        return """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Setup - scanmap</title>
-<link rel="stylesheet" href="/static/style.css">
-<style>
-.auth-wrap{max-width:420px;margin:80px auto;padding:24px}
-.auth-card{background:linear-gradient(180deg,var(--panel),#0c1420);border:1px solid var(--line);border-radius:var(--radius);padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.28)}
-.auth-card h1{margin:0 0 6px;font-size:22px}
-.auth-card p{margin:0 0 18px;color:var(--muted)}
-.auth-card label{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.auth-card input{padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:#0a121d;color:var(--text);font:inherit}
-.auth-card button{width:100%;padding:11px;border-radius:9px;border:0;background:linear-gradient(135deg,var(--accent),#1fb98d);color:#04120d;font-weight:700;cursor:pointer}
-.auth-card .err{color:var(--danger);font-size:13px;margin-top:10px;min-height:18px}
-.auth-card .ok{color:var(--accent);font-size:13px;margin-top:10px;min-height:18px}
-</style></head>
-<body>
-<div class="auth-wrap">
-<div class="auth-card">
-<div class="brand" style="margin-bottom:18px"><svg class="logo" viewBox="0 0 64 64"><circle cx="32" cy="32" r="18" fill="none" stroke="currentColor" stroke-width="4"/><circle cx="32" cy="32" r="7" fill="currentColor"/><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 8"/></svg><div><h1>Welcome to scanmap</h1><p>Create your admin account</p></div></div>
-<form id="setup-form">
-<label><span>Username</span><input name="username" autocomplete="username" minlength="3" required></label>
-<label><span>Password</span><input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
-<label><span>Confirm password</span><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></label>
-<button type="submit">Create admin account</button>
-<div class="err" id="err"></div>
-<div class="ok" id="ok"></div>
-</form>
-</div></div>
-<script>
-document.getElementById('setup-form').addEventListener('submit',async e=>{
-e.preventDefault();
-const form=new FormData(e.target);
-if(form.get('password')!==form.get('confirm')){document.getElementById('err').textContent='passwords do not match';return}
-const body={username:form.get('username'),password:form.get('password')};
-const res=await fetch('/api/auth/setup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-const data=await res.json();
-if(res.ok){document.getElementById('err').textContent='';document.getElementById('ok').textContent='Admin created, signing in...';const r2=await fetch('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(r2.ok)location.href='/'}else{document.getElementById('err').textContent=data.error||'setup failed'}
-});
-</script>
-</body></html>"""
 
 
 class ScanMapServer(ThreadingHTTPServer):
