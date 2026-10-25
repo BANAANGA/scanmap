@@ -118,6 +118,36 @@ body {
   white-space: nowrap;
 }
 
+.account-menu {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-name {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.button-link {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button-link:hover,
+.button:hover {
+  border-color: var(--accent);
+}
+
 /* ------------------------------------------------------------------ grid */
 
 main {
@@ -137,6 +167,197 @@ main {
   main {
     grid-template-columns: 1fr;
     padding: 16px;
+  }
+
+  /* -------------------------------------------------------------- auth/admin */
+
+  .auth-page {
+    min-height: 100vh;
+  }
+
+  .auth-wrap {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .auth-card {
+    width: min(100%, 430px);
+    padding: 32px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(180deg, var(--panel), #0c1420);
+    box-shadow: 0 20px 70px rgba(0, 0, 0, 0.38);
+  }
+
+  .auth-brand {
+    margin-bottom: 28px;
+  }
+
+  .auth-brand h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+  }
+
+  .auth-brand p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .auth-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .auth-field input {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    outline: none;
+    background: #0a121d;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+  }
+
+  .auth-field input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(55, 214, 168, 0.12);
+  }
+
+  .auth-submit {
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .auth-message {
+    min-height: 20px;
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .auth-message.error {
+    color: var(--danger);
+  }
+
+  .admin-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .admin-brand-mark {
+    color: var(--accent);
+    font-size: 32px;
+    line-height: 1;
+  }
+
+  .admin-brand strong,
+  .admin-brand small {
+    display: block;
+  }
+
+  .admin-brand small,
+  .muted {
+    color: var(--muted);
+  }
+
+  .admin-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
+    align-items: start;
+    gap: 18px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 28px 40px;
+  }
+
+  .admin-main .panel-head h2 {
+    margin: 0;
+  }
+
+  .admin-main .panel-head p {
+    margin: 6px 0 0;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+  }
+
+  .admin-users {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+
+  .admin-users th,
+  .admin-users td {
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+
+  .admin-users th {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .admin-users td {
+    font-size: 13px;
+  }
+
+  .admin-actions {
+    display: flex;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .button {
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--bg-soft);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .danger-button {
+    color: var(--danger);
+  }
+
+  .create-user-form {
+    display: grid;
+    gap: 4px;
+  }
+
+  .admin-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 12px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  @media (max-width: 850px) {
+    .admin-main {
+      grid-template-columns: 1fr;
+      padding: 16px;
+    }
   }
   .topbar {
     padding: 14px 16px;

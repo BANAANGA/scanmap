@@ -95,13 +95,76 @@ class AuthManager:
         con.close()
         return count > 0
 
+    def list_users(self) -> list[User]:
+        con = sqlite3.connect(self.db_path)
+        cur = con.cursor()
+        cur.execute("SELECT id, username, is_admin, created_at FROM users ORDER BY username")
+        users = [
+            User(id=row[0], username=row[1], is_admin=bool(row[2]), created_at=row[3])
+            for row in cur.fetchall()
+        ]
+        con.close()
+        return users
+
+    def update_user_role(self, user_id: int, is_admin: bool) -> bool:
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+            cur.execute("SELECT is_admin FROM users WHERE id=?", (user_id,))
+            row = cur.fetchone()
+            if row is None:
+                con.rollback()
+                return False
+            if bool(row[0]) and not is_admin:
+                cur.execute("SELECT COUNT(*) FROM users WHERE is_admin=1")
+                if cur.fetchone()[0] <= 1:
+                    raise ValueError("cannot demote the last administrator")
+            cur.execute("UPDATE users SET is_admin=? WHERE id=?", (int(is_admin), user_id))
+            con.commit()
+            return True
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
+
+    def delete_user(self, user_id: int) -> bool:
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+            cur.execute("SELECT is_admin FROM users WHERE id=?", (user_id,))
+            row = cur.fetchone()
+            if row is None:
+                con.rollback()
+                return False
+            if bool(row[0]):
+                cur.execute("SELECT COUNT(*) FROM users WHERE is_admin=1")
+                if cur.fetchone()[0] <= 1:
+                    raise ValueError("cannot delete the last administrator")
+            cur.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+            cur.execute("DELETE FROM users WHERE id=?", (user_id,))
+            con.commit()
+            with self._session_lock:
+                for token, session in list(self._sessions.items()):
+                    if session["user_id"] == user_id:
+                        self._sessions.pop(token, None)
+            return True
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
+
     def _hash_password(self, password: str, salt: bytes | None = None) -> tuple[str, str]:
         if salt is None:
             salt = secrets.token_bytes(16)
         dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS)
         return dk.hex(), salt.hex()
 
-    def create_user(self, username: str, password: str, is_admin: bool = False) -> User | None:
+    @staticmethod
+    def _validate_credentials(username: str, password: str) -> str:
         username = username.strip()
         if not username or len(username) < 3 or len(username) > 32:
             raise ValueError("username must be 3-32 characters")
@@ -109,13 +172,18 @@ class AuthManager:
             raise ValueError("password must be at least 8 characters")
         if not all(c.isalnum() or c in "-_" for c in username):
             raise ValueError("username may only contain letters, numbers, hyphens and underscores")
+        return username.lower()
+
+    def create_user(self, username: str, password: str, is_admin: bool = False) -> User:
+        username = self._validate_credentials(username, password)
         phash, salt = self._hash_password(password)
+        created_at = time.time()
         con = sqlite3.connect(self.db_path)
         cur = con.cursor()
         try:
             cur.execute(
                 "INSERT INTO users (username, password_hash, salt, is_admin, created_at) VALUES (?,?,?,?,?)",
-                (username.lower(), phash, salt, 1 if is_admin else 0, time.time()),
+                (username, phash, salt, 1 if is_admin else 0, created_at),
             )
             con.commit()
             user_id = cur.lastrowid
@@ -123,7 +191,31 @@ class AuthManager:
             con.close()
             raise ValueError("username already exists")
         con.close()
-        return User(id=user_id, username=username.lower(), is_admin=is_admin, created_at=time.time())
+        return User(id=user_id, username=username, is_admin=is_admin, created_at=created_at)
+
+    def create_initial_admin(self, username: str, password: str) -> User:
+        username = self._validate_credentials(username, password)
+        phash, salt = self._hash_password(password)
+        created_at = time.time()
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.cursor()
+            cur.execute("BEGIN IMMEDIATE")
+            cur.execute("SELECT COUNT(*) FROM users")
+            if cur.fetchone()[0]:
+                raise ValueError("admin already exists")
+            cur.execute(
+                "INSERT INTO users (username, password_hash, salt, is_admin, created_at) VALUES (?,?,?,?,?)",
+                (username, phash, salt, 1, created_at),
+            )
+            user_id = cur.lastrowid
+            con.commit()
+            return User(id=user_id, username=username, is_admin=True, created_at=created_at)
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
 
     def verify_user(self, username: str, password: str) -> User | None:
         username = username.strip().lower()

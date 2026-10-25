@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Create administrator · scanmap</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/auth.js" defer></script>
+  </head>
+  <body class="auth-page">
+    <main class="auth-wrap">
+      <section class="auth-card" aria-labelledby="page-title">
+        <div class="brand auth-brand">
+          <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="18" fill="none" stroke="currentColor" stroke-width="4" />
+            <circle cx="32" cy="32" r="7" fill="currentColor" />
+            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 8" />
+          </svg>
+          <div>
+            <h1 id="page-title">Set up scanmap</h1>
+            <p>Create the first administrator account</p>
+          </div>
+        </div>
+        <form id="setup-form">
+          <label class="auth-field">
+            <span>Username</span>
+            <input name="username" autocomplete="username" minlength="3" maxlength="32" required autofocus />
+          </label>
+          <label class="auth-field">
+            <span>Password</span>
+            <input type="password" name="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <label class="auth-field">
+            <span>Confirm password</span>
+            <input type="password" name="confirm" autocomplete="new-password" minlength="8" required />
+          </label>
+          <button class="primary auth-submit" type="submit">Create administrator</button>
+          <p class="auth-message error" id="auth-error" role="alert"></p>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

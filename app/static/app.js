@@ -67,6 +67,41 @@ async function loadTools(refresh = false) {
         tab.disabled = !tool.available;
         tab.title = tool.available ? "" : `${tool.name} is not installed in this container`;
       }
+
+      async function loadAccountMenu() {
+        const menu = $("#account-menu");
+        try {
+          const response = await fetch("/api/auth/me");
+          if (!response.ok) return;
+          const data = await response.json();
+          if (data.auth !== "session" || !data.user) return;
+
+          const identity = document.createElement("span");
+          identity.className = "account-name";
+          identity.textContent = data.user.username;
+          menu.append(identity);
+          if (data.user.is_admin) {
+            const admin = document.createElement("a");
+            admin.className = "button-link";
+            admin.href = "/admin";
+            admin.textContent = "Users";
+            menu.append(admin);
+          }
+          const logout = document.createElement("button");
+          logout.type = "button";
+          logout.className = "button-link";
+          logout.textContent = "Sign out";
+          logout.addEventListener("click", async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            location.href = "/login";
+          });
+          menu.append(logout);
+          menu.classList.remove("hidden");
+        } catch (error) {
+          menu.textContent = `account status unavailable: ${error.message}`;
+          menu.classList.remove("hidden");
+        }
+      }
     });
     checkScannerAvailability();
   } catch (error) {
@@ -682,6 +717,7 @@ $("#refresh-jobs").addEventListener("click", () => refreshJobs());
 /* ------------------------------------------------------------------- boot */
 
 (async function boot() {
+  await loadAccountMenu();
   await loadTools();
   selectScanner("nmap");
   const jobs = await refreshJobs();
