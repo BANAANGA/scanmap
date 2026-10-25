@@ -23,8 +23,9 @@ space quickly.
 
 - **Two scanners behind one UI** — nmap and zmap, each with their own form.
 - **Live output** — job output is streamed into the browser while a scan runs.
-- **Copyable results** — zmap CSV responses are shown in a table; click a cell
-  to copy its value, or copy all rows and save them as a CSV file.
+- **Organized scan results** — nmap host/port results and zmap CSV responses
+  are shown in tables; click a cell to copy its value, or copy all rows and
+  save them as a CSV file.
 - **Zmap-to-nmap handoff** — select result IPs and add them to the nmap target
   list without replacing existing targets.
 - **Job list** — start several scans, watch status, cancel a running one,
