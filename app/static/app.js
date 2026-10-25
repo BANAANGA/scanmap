@@ -13,6 +13,7 @@ const state = {
   hosts: new Set(),
   resultFields: null,
   resultRows: [],
+  selectedResultAddresses: new Set(),
   copyStatusTimer: null,
   busy: false,
 };
@@ -260,12 +261,14 @@ function selectJob(jobId) {
   state.hosts = new Set();
   state.resultFields = null;
   state.resultRows = [];
+  state.selectedResultAddresses = new Set();
   state.job = null;
   $("#console").textContent = "";
   $("#results-wrap").classList.add("hidden");
   $("#results-table thead").textContent = "";
   $("#results-table tbody").textContent = "";
   $("#copy-status").textContent = "";
+  updateNmapSelectionAction();
   $("#copy-all-results").disabled = true;
   $("#save-results-csv").disabled = true;
   $("#job-ref").textContent = jobId;
@@ -387,6 +390,29 @@ function appendZmapResult(line) {
 
   renderResultHeaders(fields);
   const row = document.createElement("tr");
+  const selectableAddress = fields.includes("saddr") ? values[fields.indexOf("saddr")] : null;
+  if (selectableAddress) {
+    const selectCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "result-select";
+    checkbox.value = selectableAddress;
+    checkbox.checked = state.selectedResultAddresses.has(selectableAddress);
+    checkbox.setAttribute("aria-label", `Select ${selectableAddress} for nmap`);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        state.selectedResultAddresses.add(selectableAddress);
+      } else {
+        state.selectedResultAddresses.delete(selectableAddress);
+      }
+      updateNmapSelectionAction();
+      $$(".result-select").forEach((item) => {
+        if (item.value === selectableAddress) item.checked = checkbox.checked;
+      });
+    });
+    selectCell.append(checkbox);
+    row.append(selectCell);
+  }
   values.forEach((value) => {
     const cell = document.createElement("td");
     const copyButton = document.createElement("button");
@@ -413,6 +439,12 @@ function renderResultHeaders(fields) {
   const table = $("#results-table");
   if (table.tHead.rows.length) return;
   const row = table.tHead.insertRow();
+  if (fields.includes("saddr")) {
+    const selectHeader = document.createElement("th");
+    selectHeader.scope = "col";
+    selectHeader.textContent = "Select";
+    row.append(selectHeader);
+  }
   fields.forEach((field) => {
     const header = document.createElement("th");
     header.scope = "col";
@@ -461,6 +493,39 @@ function copyWithSelection(value) {
   return copied;
 }
 
+function updateNmapSelectionAction() {
+  const button = $("#add-selected-to-nmap");
+  const count = state.selectedResultAddresses.size;
+  button.disabled = count === 0;
+  button.textContent = count ? `add ${count} selected to nmap` : "add selected to nmap";
+}
+
+$("#add-selected-to-nmap").addEventListener("click", () => {
+  const selected = [...state.selectedResultAddresses];
+  if (!selected.length) return;
+
+  const target = $('#nmap-form [name="target"]');
+  const current = target.value.trim();
+  const existing = new Set(
+    current.split(/[,\s]+/).filter(Boolean).map((value) => value.toLowerCase())
+  );
+  const additions = selected.filter((address) => !existing.has(address.toLowerCase()));
+  if (additions.length) {
+    target.value = current ? `${current}, ${additions.join(", ")}` : additions.join(", ");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  state.selectedResultAddresses.clear();
+  $$(".result-select").forEach((checkbox) => {
+    checkbox.checked = false;
+  });
+  updateNmapSelectionAction();
+  selectScanner("nmap");
+  target.focus();
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  showCopyStatus(`Added ${additions.length} address${additions.length === 1 ? "" : "es"} to nmap targets`);
+});
+
 $("#copy-all-results").addEventListener("click", async () => {
   if (!state.resultFields || !state.resultRows.length) return;
   const values = [state.resultFields, ...state.resultRows]
@@ -503,11 +568,13 @@ $("#clear-job").addEventListener("click", () => {
   state.lines = [];
   state.hosts = new Set();
   state.resultRows = [];
+  state.selectedResultAddresses.clear();
   state.offset = state.job ? state.job.next : state.offset;
   $("#console").textContent = "";
   $("#results-wrap").classList.add("hidden");
   $("#results-table thead").textContent = "";
   $("#results-table tbody").textContent = "";
+  updateNmapSelectionAction();
   $("#copy-all-results").disabled = true;
   $("#save-results-csv").disabled = true;
   $("#host-counter").textContent = "";
